@@ -1,2 +1,5 @@
 深度学习导论作业1-1.md
 .vscode/settings.json
+model_weights/best_diabetes_Basic_FNN_ReLU.pth
+__pycache__/nets.cpython-313.pyc
+__pycache__/load.cpython-313.pyc

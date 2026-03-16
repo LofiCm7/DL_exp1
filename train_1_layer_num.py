@@ -21,6 +21,8 @@ from nets import Normal_FNN_ReLU, Basic_FNN_ReLU, Deep_FNN_ReLU
 # | 深层网络 | 4个隐藏层 | Deep_FNN_ReLU   |
 # ***************************************************
 
+random_seed = 42 # 设置固定随机种子
+
 def train_model(which_model):
     # 1.超参数设置与设备选择
     EPOCHS = 200          # 训练总轮数
@@ -36,7 +38,7 @@ def train_model(which_model):
     # 2.加载数据
     train_loader, valid_loader, test_loader, mean, std = load_data(
         test_size=0.2, 
-        random_state=42, 
+        random_state=random_seed, 
         valid_size=0.2, 
         batch_size=BATCH_SIZE, 
         rescale_test=False #不标准化测试集
@@ -58,7 +60,6 @@ def train_model(which_model):
 
     # 4.训练
     print("-" * 40)
-    print("开始训练...")
     
     for epoch in range(1, EPOCHS + 1):
         #训练
@@ -85,7 +86,6 @@ def train_model(which_model):
         model.eval()
         valid_loss_sum = 0.0
         
-        # 验证阶段不需要计算梯度，节约显存和算力
         with torch.no_grad():
             for batch_X, batch_y in valid_loader:
                 batch_X, batch_y = batch_X.to(device), batch_y.to(device)
@@ -99,21 +99,45 @@ def train_model(which_model):
         # 保存表现最好的模型权重
         if avg_valid_loss < best_valid_loss:
             best_valid_loss = avg_valid_loss
-            torch.save(model.state_dict(), "./model_weights/best_diabetes_model.pth")
+            torch.save(model.state_dict(), "./model_weights/best_diabetes_{}.pth".format(which_model))
         
-        # 每 20 轮打印一次进度
-        if epoch % 20 == 0 or epoch == 1:
-            print(f"Epoch [{epoch:3d}/{EPOCHS}] | Train Loss: {avg_train_loss:.4f} | Valid Loss: {avg_valid_loss:.4f}")
+        # 打印进度
+        print(f"Epoch [{epoch:3d}/{EPOCHS}] | Train Loss: {avg_train_loss:.4f} | Valid Loss: {avg_valid_loss:.4f}")
 
-    print("已将最佳模型保存为 'best_diabetes_model.pth'")
+    print("已将最佳模型保存为 'best_diabetes_{}.pth'".format(which_model))
     print("-" * 40)
 
-    # ==========================================
-    # 5. 测试集评估 (还原为真实物理量度)
-    # ==========================================
-    print("\n加载最佳模型进行测试集评估...")
-    # 加载刚刚保存的最佳权重
-    model.load_state_dict(torch.load("best_diabetes_model.pth", weights_only=True))
+    
+def evaluate_model(which_model):
+    BATCH_SIZE = 32       # 批次大小
+    
+    # 自动检测并使用GPU
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"当前使用的计算设备: {device}")
+    if device.type == 'cuda':
+        print(f"GPU 型号: {torch.cuda.get_device_name(0)}\n")
+
+    # 2.加载数据
+    train_loader, valid_loader, test_loader, mean, std = load_data(
+        test_size=0.2, 
+        random_state=random_seed, 
+        valid_size=0.2, 
+        batch_size=BATCH_SIZE, 
+        rescale_test=False #不标准化测试集
+    )
+    
+    # 3.初始化模型、损失函数与优化器
+    if which_model == "Basic_FNN_ReLU":
+        model = Basic_FNN_ReLU().to(device)
+    elif which_model == "Normal_FNN_ReLU":
+        model = Normal_FNN_ReLU().to(device)
+    elif which_model == "Deep_FNN_ReLU":
+        model = Deep_FNN_ReLU().to(device)
+
+    criterion = nn.MSELoss()
+    
+    # 加载最佳权重
+    model.load_state_dict(torch.load("./model_weights/best_diabetes_{}.pth".format(which_model), weights_only=True))
     model.eval()
     
     absolute_errors = []
@@ -138,9 +162,8 @@ def train_model(which_model):
             
     # 计算平均绝对误差 (Mean Absolute Error, MAE)
     mae = np.mean(absolute_errors)
-    print(f"测试集评估完成！")
     print(f"模型的真实预测误差 (MAE): 平均偏离真实病情指数 {mae:.2f} 分")
 
 
 if __name__ == "__main__":
-    train_model()
+    train_model('Basic_FNN_ReLU')
