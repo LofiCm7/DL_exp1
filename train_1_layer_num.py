@@ -25,7 +25,7 @@ random_seed = 42 # 设置固定随机种子
 
 def train_model(which_model):
     # 1.超参数设置与设备选择
-    EPOCHS = 200          # 训练总轮数
+    EPOCHS = 100          # 训练总轮数
     BATCH_SIZE = 32       # 批次大小
     LEARNING_RATE = 0.005 # 学习率
     
@@ -61,6 +61,9 @@ def train_model(which_model):
     # 4.训练
     print("-" * 40)
     
+    Train_losses = []
+    Valid_losses = []
+    
     for epoch in range(1, EPOCHS + 1):
         #训练
         model.train()
@@ -81,6 +84,7 @@ def train_model(which_model):
             
         # 计算平均训练 Loss
         avg_train_loss = train_loss_sum / len(train_loader.dataset)
+        Train_losses.append(avg_train_loss)
         
         #验证
         model.eval()
@@ -95,6 +99,7 @@ def train_model(which_model):
                 
         # 计算平均验证 Loss
         avg_valid_loss = valid_loss_sum / len(valid_loader.dataset)
+        Valid_losses.append(avg_valid_loss)
         
         # 保存表现最好的模型权重
         if avg_valid_loss < best_valid_loss:
@@ -106,6 +111,8 @@ def train_model(which_model):
 
     print("已将最佳模型保存为 'best_diabetes_{}.pth'".format(which_model))
     print("-" * 40)
+    
+    return Train_losses, Valid_losses
 
     
 def evaluate_model(which_model):
@@ -166,4 +173,32 @@ def evaluate_model(which_model):
 
 
 if __name__ == "__main__":
-    train_model('Basic_FNN_ReLU')
+    import matplotlib.pyplot as plt
+    
+    Train_losses_1, Valid_losses_1 = train_model('Basic_FNN_ReLU')
+    Train_losses_2, Valid_losses_2 = train_model('Normal_FNN_ReLU')
+    Train_losses_3, Valid_losses_3 = train_model('Deep_FNN_ReLU')
+    
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharex=True)
+    axes[0].plot(Train_losses_1, label='1 Layer Train Loss', color='orange')
+    axes[0].plot(Train_losses_2, label='2 Layer Train Loss', color='green')
+    axes[0].plot(Train_losses_3, label='4 Layer Train Loss', color='blue')
+
+    axes[0].set_title('Training Loss Curve')
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('MSE Loss')
+    axes[0].legend()
+    axes[0].grid()
+    
+    axes[1].plot(Valid_losses_1, label='1 Layer Valid Loss', color='orange')
+    axes[1].plot(Valid_losses_2, label='2 Layer Valid Loss', color='green')
+    axes[1].plot(Valid_losses_3, label='4 Layer Valid Loss', color='blue')
+    
+    axes[1].set_title('Validation Loss Curve')
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('MSE Loss')
+    axes[1].legend()
+    axes[1].grid()
+    
+    plt.tight_layout()
+    plt.show()
