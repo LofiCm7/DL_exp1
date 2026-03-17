@@ -120,17 +120,22 @@ def evaluate_model(which_model):
     
     # 自动检测并使用GPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"当前使用的计算设备: {device}")
-    if device.type == 'cuda':
-        print(f"GPU 型号: {torch.cuda.get_device_name(0)}\n")
 
     # 2.加载数据
-    train_loader, valid_loader, test_loader, mean, std = load_data(
+    train_loader, valid_loader, test_loader_true, mean, std = load_data(
         test_size=0.2, 
         random_state=random_seed, 
         valid_size=0.2, 
         batch_size=BATCH_SIZE, 
         rescale_test=False #不标准化测试集
+    )
+    
+    train_loader, valid_loader, test_loader_rescale, mean, std = load_data(
+        test_size=0.2, 
+        random_state=random_seed, 
+        valid_size=0.2, 
+        batch_size=BATCH_SIZE, 
+        rescale_test=True #标准化测试集
     )
     
     # 3.初始化模型、损失函数与优化器
@@ -147,29 +152,34 @@ def evaluate_model(which_model):
     model.load_state_dict(torch.load("./model_weights/best_diabetes_{}.pth".format(which_model), weights_only=True))
     model.eval()
     
-    absolute_errors = []
-    
+    test_loss_sum = 0.0
     with torch.no_grad():
-        for batch_X, batch_y_true in test_loader:
-            # 此时 batch_y_true 是未经标准化的真实糖尿病指数（一百多或两百多）
+        for batch_X, batch_y in test_loader_rescale:
+            batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+            predictions = model(batch_X)
+            loss = criterion(predictions, batch_y)
+            test_loss_sum += loss.item() * batch_X.size(0)
+    # 计算平均测试 Loss
+    avg_test_loss = test_loss_sum / len(test_loader_rescale.dataset)
+    print("-" * 40)
+    print(f"{which_model} 在测试集上的 MSE Loss: {avg_test_loss:.4f}")
+    
+    absolute_errors = []
+    with torch.no_grad():
+        for batch_X, batch_y_true in test_loader_true:
             batch_X = batch_X.to(device)
-            
-            # 模型输出的是标准化空间下的预测值（0 左右）
             normalized_preds = model(batch_X)
-            
-            # 把预测值搬回 CPU 并转为 numpy 数组进行处理（或者用 torch 的方法也可以）
             normalized_preds = normalized_preds.cpu()
-            
-            # 【核心逻辑】：使用 load.py 里的 restore_labels 把预测值还原为真实指标！
             real_preds = restore_labels(normalized_preds, mean, std)
             
-            # 计算绝对误差 (|预测值 - 真实值|)
+            # 计算绝对误差
             batch_errors = torch.abs(real_preds - batch_y_true)
             absolute_errors.extend(batch_errors.numpy().flatten())
             
     # 计算平均绝对误差 (Mean Absolute Error, MAE)
     mae = np.mean(absolute_errors)
-    print(f"模型的真实预测误差 (MAE): 平均偏离真实病情指数 {mae:.2f} 分")
+    print(f"{which_model} 预测平均绝对误差: {mae:.2f}")
+    print("-" * 40)
 
 
 if __name__ == "__main__":
@@ -202,3 +212,7 @@ if __name__ == "__main__":
     
     plt.tight_layout()
     plt.show()
+    
+    evaluate_model('Basic_FNN_ReLU')
+    evaluate_model('Normal_FNN_ReLU')
+    evaluate_model('Deep_FNN_ReLU')
