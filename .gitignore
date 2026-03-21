@@ -5,3 +5,7 @@ __pycache__/nets.cpython-313.pyc
 __pycache__/load.cpython-313.pyc
 model_weights/best_diabetes_Deep_FNN_ReLU.pth
 model_weights/best_diabetes_Normal_FNN_ReLU.pth
+model_weights/best_diabetes_0_1.pth
+model_weights/best_diabetes_0_01.pth
+model_weights/best_diabetes_0_001.pth
+model_weights/best_diabetes_0_0001.pth
