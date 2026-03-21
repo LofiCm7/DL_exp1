@@ -6,6 +6,8 @@ import numpy as np
 from load import load_data, restore_labels
 from nets import Normal_FNN_ReLU, Basic_FNN_ReLU, Deep_FNN_ReLU
 
+import os
+
 # ***************************************************
 # 网络深度的影响
 #
@@ -23,11 +25,18 @@ from nets import Normal_FNN_ReLU, Basic_FNN_ReLU, Deep_FNN_ReLU
 
 random_seed = 42 # 设置固定随机种子
 
+rescale_or_not = False # 是否标准化数据集
+
+save_dir = "./model_weights" # 模型权重保存目录
+can_save_model = os.path.isdir(save_dir) # 检查目录是否存在
+if not can_save_model:
+    os.makedirs(save_dir, exist_ok=True)
+
 def train_model(which_model):
     # 1.超参数设置与设备选择
     EPOCHS = 100          # 训练总轮数
     BATCH_SIZE = 32       # 批次大小
-    LEARNING_RATE = 0.005 # 学习率
+    LEARNING_RATE = 0.001 # 学习率
     
     # 自动检测并使用GPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,7 +50,7 @@ def train_model(which_model):
         random_state=random_seed, 
         valid_size=0.2, 
         batch_size=BATCH_SIZE, 
-        rescale_test=False #不标准化测试集
+        rescale=rescale_or_not
     )
     
     # 3.初始化模型、损失函数与优化器
@@ -104,12 +113,15 @@ def train_model(which_model):
         # 保存表现最好的模型权重
         if avg_valid_loss < best_valid_loss:
             best_valid_loss = avg_valid_loss
-            torch.save(model.state_dict(), "./model_weights/best_diabetes_{}.pth".format(which_model))
+            torch.save(model.state_dict(), "{}/best_diabetes_{}.pth".format(save_dir, which_model))
         
         # 打印进度
         print(f"Epoch [{epoch:3d}/{EPOCHS}] | Train Loss: {avg_train_loss:.4f} | Valid Loss: {avg_valid_loss:.4f}")
 
-    print("已将最佳模型保存为 'best_diabetes_{}.pth'".format(which_model))
+    if can_save_model:
+        print("已将最佳模型保存为 'best_diabetes_{}.pth'".format(which_model))
+    else:
+        print("因为目录 '{}' 原本不存在，已新建同名文件夹。已将最佳模型保存为 'best_diabetes_{}.pth'".format(save_dir, which_model))
     print("-" * 40)
     
     return Train_losses, Valid_losses
@@ -127,7 +139,7 @@ def evaluate_model(which_model):
         random_state=random_seed, 
         valid_size=0.2, 
         batch_size=BATCH_SIZE, 
-        rescale_test=False #不标准化测试集
+        rescale=False #不标准化测试集
     )
     
     train_loader, valid_loader, test_loader_rescale, mean, std = load_data(
@@ -135,7 +147,7 @@ def evaluate_model(which_model):
         random_state=random_seed, 
         valid_size=0.2, 
         batch_size=BATCH_SIZE, 
-        rescale_test=True #标准化测试集
+        rescale=True #标准化测试集
     )
     
     # 3.初始化模型、损失函数与优化器
@@ -149,40 +161,49 @@ def evaluate_model(which_model):
     criterion = nn.MSELoss()
     
     # 加载最佳权重
-    model.load_state_dict(torch.load("./model_weights/best_diabetes_{}.pth".format(which_model), weights_only=True))
+    model.load_state_dict(torch.load("{}/best_diabetes_{}.pth".format(save_dir, which_model), weights_only=True))
     model.eval()
     
-    test_loss_sum = 0.0
-    with torch.no_grad():
-        for batch_X, batch_y in test_loader_rescale:
-            batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-            predictions = model(batch_X)
-            loss = criterion(predictions, batch_y)
-            test_loss_sum += loss.item() * batch_X.size(0)
-    # 计算平均测试 Loss
-    avg_test_loss = test_loss_sum / len(test_loader_rescale.dataset)
-    print("-" * 40)
-    print(f"{which_model} 在测试集上的 MSE Loss: {avg_test_loss:.4f}")
+    if rescale_or_not:
+        test_loss_sum = 0.0
+        with torch.no_grad():
+            for batch_X, batch_y in test_loader_rescale:
+                batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+                predictions = model(batch_X)
+                loss = criterion(predictions, batch_y)
+                test_loss_sum += loss.item() * batch_X.size(0)
+        # 计算平均测试 Loss
+        avg_test_loss = test_loss_sum / len(test_loader_rescale.dataset)
+        print("-" * 40)
+        print(f"{which_model} 在测试集上的标签标准化后的 MSE Loss: {avg_test_loss:.4f}")
     
-    absolute_errors = []
+    errors_sum = 0.0
     with torch.no_grad():
         for batch_X, batch_y_true in test_loader_true:
             batch_X = batch_X.to(device)
             normalized_preds = model(batch_X)
             normalized_preds = normalized_preds.cpu()
-            real_preds = restore_labels(normalized_preds, mean, std)
+            if rescale_or_not:
+                real_preds = restore_labels(normalized_preds, mean, std)
+            else:
+                real_preds = normalized_preds
+
+            # 计算绝对方均误差
+            errors = criterion(real_preds, batch_y_true.cpu())
+            errors_sum += errors.item() * batch_X.size(0)
             
-            # 计算绝对误差
-            batch_errors = torch.abs(real_preds - batch_y_true)
-            absolute_errors.extend(batch_errors.numpy().flatten())
-            
-    # 计算平均绝对误差 (Mean Absolute Error, MAE)
-    mae = np.mean(absolute_errors)
-    print(f"{which_model} 预测平均绝对误差: {mae:.2f}")
+    # 计算平均绝对方均误差
+    avg_test_error = errors_sum / len(test_loader_true.dataset)
+    print(f"{which_model} 在原始测试集上的 MSE Loss: {avg_test_error:.2f}")
     print("-" * 40)
 
 
 if __name__ == "__main__":
+    if rescale_or_not:
+        print("本次实验使用了标签标准化后的数据集。")
+    else:
+        print("本次实验使用了标签未标准化的数据集。")
+    
     import matplotlib.pyplot as plt
     
     Train_losses_1, Valid_losses_1 = train_model('Basic_FNN_ReLU')
