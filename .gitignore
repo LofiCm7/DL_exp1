@@ -9,3 +9,7 @@ model_weights/best_diabetes_0_1.pth
 model_weights/best_diabetes_0_01.pth
 model_weights/best_diabetes_0_001.pth
 model_weights/best_diabetes_0_0001.pth
+model_weights/best_diabetes_Normal_FNN_Tanh.pth
+model_weights/best_diabetes_Normal_FNN_Swish.pth
+model_weights/best_diabetes_Normal_FNN_Sigmoid.pth
+model_weights/best_diabetes_Normal_FNN_LeakyReLU.pth
